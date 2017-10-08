@@ -13,6 +13,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
+import SafariView from 'react-native-safari-view';
 import { Button, Icon } from 'react-native-elements';
 import AppIntro from 'rn-app-intro';
 import queryString from 'query-string';
@@ -24,6 +25,9 @@ import { auth } from 'auth';
 import { translate } from 'utils';
 
 const stateRandom = Math.random().toString();
+const redirectUri = 'gitpoint://welcome';
+const authScopes = ['user', 'repo'].join('%20');
+const authUrl = `https://github.com/login/oauth/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${redirectUri}&scope=${authScopes}&state=${stateRandom}`;
 
 const mapStateToProps = state => ({
   language: state.auth.language,
@@ -150,6 +154,7 @@ class Login extends Component {
 
     this.state = {
       code: null,
+      openAuthPage: false,
       modalVisible: false,
       cancelDisabled: false,
       showLoader: true,
@@ -189,6 +194,10 @@ class Login extends Component {
     this.handleOpenURL({ url });
   };
 
+  setOpenAuthPage = openAuthPage => {
+    this.setState({ openAuthPage });
+  };
+
   setModalVisible = visible => {
     this.setState({ modalVisible: visible });
   };
@@ -219,6 +228,11 @@ class Login extends Component {
     }
   };
 
+  triggerFallbackAuthView = () => {
+    this.setOpenAuthPage(false);
+    this.setModalVisible(true);
+  };
+
   renderLoading() {
     return (
       <View style={styles.browserLoader}>
@@ -232,6 +246,23 @@ class Login extends Component {
 
   render() {
     const { language, isLoggingIn, isAuthenticated } = this.props;
+
+    if (
+      !isAuthenticated &&
+      !isLoggingIn &&
+      this.state.asyncStorageChecked &&
+      this.state.openAuthPage
+    ) {
+      SafariView.isAvailable()
+        .then(available => {
+          if (available) {
+            SafariView.show({ url: authUrl });
+          } else {
+            this.triggerFallbackAuthView();
+          }
+        })
+        .catch(() => this.triggerFallbackAuthView());
+    }
 
     return (
       <ViewContainer barColor="light">
@@ -248,9 +279,7 @@ class Login extends Component {
               <View style={styles.modalContainer}>
                 <View style={styles.browserSection}>
                   <WebView
-                    source={{
-                      uri: `https://github.com/login/oauth/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=gitpoint://welcome&scope=user%20repo&state=${stateRandom}`,
-                    }}
+                    source={{ uri: authUrl }}
                     onLoadStart={e => this.toggleCancelButton(e, true)}
                     onLoadEnd={e => this.toggleCancelButton(e, false)}
                     onNavigationStateChange={e =>
@@ -265,8 +294,10 @@ class Login extends Component {
                     buttonStyle={styles.button}
                     disabled={this.state.cancelDisabled}
                     textStyle={styles.buttonText}
-                    onPress={() =>
-                      this.setModalVisible(!this.state.modalVisible)}
+                    onPress={() => {
+                      this.setOpenAuthPage(false);
+                      this.setModalVisible(false);
+                    }}
                   />
                 </View>
               </View>
@@ -350,7 +381,7 @@ class Login extends Component {
                 title={translate('auth.login.signInButton', language)}
                 buttonStyle={styles.button}
                 textStyle={styles.buttonText}
-                onPress={() => this.setModalVisible(true)}
+                onPress={() => this.setOpenAuthPage(true)}
               />
             </View>
           </View>}
